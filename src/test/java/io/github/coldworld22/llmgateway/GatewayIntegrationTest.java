@@ -12,6 +12,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
@@ -19,6 +20,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -29,6 +31,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * The whole pipeline against real Postgres and Redis, with two stub model providers standing in
  * for OpenAI and Azure so no API keys or network access are needed.
  */
+// Metrics export is off in tests unless asked for; the Prometheus test needs it.
+@AutoConfigureObservability
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class GatewayIntegrationTest {
 
@@ -79,6 +83,8 @@ class GatewayIntegrationTest {
 
     @BeforeEach
     void resetStubs() {
+        // HttpURLConnection (the default) can't read a 401 body when streaming; the JDK client can.
+        http.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
         PRIMARY.reset();
         BACKUP.reset();
         breakers.recordSuccess("primary");
