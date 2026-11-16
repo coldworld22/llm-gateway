@@ -1,0 +1,73 @@
+spring:
+  application:
+    name: llm-gateway
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/llm_gateway}
+    username: ${DATABASE_USER:gateway}
+    password: ${DATABASE_PASSWORD:gateway}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  threads:
+    virtual:
+      # Most of a request's time is spent waiting for the model; virtual threads keep that cheap.
+      enabled: true
+
+server:
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+gateway:
+  provider-timeout: 30s
+  cache-ttl: 1h
+  block-prompt-injection: true
+  breaker:
+    failure-threshold: 3
+    open-duration: 30s
+
+  providers:
+    openai:
+      base-url: https://api.openai.com/v1
+      api-key: ${OPENAI_API_KEY:}
+      auth-header: Authorization
+      auth-prefix: "Bearer "
+    azure:
+      # Azure OpenAI v1 API: https://<resource>.openai.azure.com/openai/v1
+      base-url: ${AZURE_OPENAI_BASE_URL:https://example.openai.azure.com/openai/v1}
+      api-key: ${AZURE_OPENAI_API_KEY:}
+      auth-header: api-key
+      auth-prefix: ""
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434/v1}
+
+  # A route is what clients put in "model". Targets are tried in order.
+  routes:
+    chat-default:
+      - { provider: azure, model: "${AZURE_OPENAI_DEPLOYMENT:gpt-4o-mini}" }
+      - { provider: openai, model: gpt-4o-mini }
+      - { provider: ollama, model: llama3.2 }
+    chat-local:
+      - { provider: ollama, model: llama3.2 }
+
+  # USD per million tokens. Check provider pricing pages before relying on these numbers.
+  pricing:
+    gpt-4o-mini: { input-per-million: 0.15, output-per-million: 0.60 }
+    llama3.2: { input-per-million: 0, output-per-million: 0 }
+
+---
+spring:
+  config:
+    activate:
+      on-profile: demo
+  flyway:
+    locations: classpath:db/migration,classpath:db/demo
